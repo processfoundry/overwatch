@@ -1,0 +1,33 @@
+version: 2
+
+builds:
+  - main: ./cmd/overwatch
+    binary: overwatch
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/christianmscott/overwatch/internal/version.Version={{.Version}}
+      - -X github.com/christianmscott/overwatch/internal/version.Commit={{.Commit}}
+      - -X github.com/christianmscott/overwatch/internal/version.Date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
