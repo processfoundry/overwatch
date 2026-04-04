@@ -1,0 +1,17 @@
+package spec
+
+import "time"
+
+type Lease struct {
+	ID        string    `json:"id"`
+	Check     CheckSpec `json:"check"`
+	IssuedAt  time.Time `json:"issued_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
+}
+
+type WorkerInfo struct {
+	ID           string   `json:"id"`
+	Version      string   `json:"version"`
+	Capabilities []string `json:"capabilities"`
+}

@@ -1,36 +1,25 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Binary
+/overwatch
+/dist/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Dependencies
+/vendor/
 
-# testing
-/coverage
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+# OS
 .DS_Store
-*.pem
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
+# Environment
 .env
+.env.*
 
-# vercel
-.vercel
+# Test
+coverage.out
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Agents
+AGENTS.md
