@@ -1,0 +1,48 @@
+# Overwatch configuration
+# See: https://github.com/christianmscott/overwatch
+
+checks:
+  - name: processfoundry-http
+    type: http
+    target: https://processfoundry.io
+    interval: 60s
+    timeout: 10s
+    expected_status: 200
+
+  # - name: example-tcp
+  #   type: tcp
+  #   target: localhost:5432
+  #   interval: 30s
+  #   timeout: 5s
+
+  # - name: example-tls
+  #   type: tls
+  #   target: example.com:443
+  #   interval: 1h
+  #   timeout: 10s
+
+  # - name: example-dns
+  #   type: dns
+  #   target: example.com
+  #   interval: 5m
+  #   timeout: 5s
+
+alerts:
+  webhooks: []
+  # - name: slack
+  #   url: https://hooks.slack.com/services/...
+  #   method: POST
+  #   timeout: 10s
+
+  # smtp:
+  #   host: smtp.example.com
+  #   port: 587
+  #   tls: true
+  #   username: user
+  #   password: pass
+  #   from: overwatch@example.com
+  #   recipients:
+  #     - oncall@example.com
+
+worker:
+  concurrency: 4

@@ -1,6 +1,9 @@
 package spec
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Lease struct {
 	ID        string    `json:"id"`
@@ -14,4 +17,11 @@ type WorkerInfo struct {
 	ID           string   `json:"id"`
 	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities"`
+}
+
+type JobSource interface {
+	Poll(ctx context.Context, worker WorkerInfo) ([]Lease, error)
+	Ack(ctx context.Context, lease Lease, result CheckResult) error
+	Nack(ctx context.Context, lease Lease, reason string) error
+	Heartbeat(ctx context.Context, lease Lease) error
 }
