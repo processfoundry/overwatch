@@ -10,10 +10,9 @@ import (
 )
 
 type Router struct {
+	mu      sync.Mutex
 	senders []AlertSender
-
-	mu    sync.Mutex
-	state map[string]spec.CheckStatus
+	state   map[string]spec.CheckStatus
 }
 
 func NewRouter(senders []AlertSender) *Router {
@@ -21,6 +20,12 @@ func NewRouter(senders []AlertSender) *Router {
 		senders: senders,
 		state:   make(map[string]spec.CheckStatus),
 	}
+}
+
+func (r *Router) UpdateSenders(senders []AlertSender) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.senders = senders
 }
 
 func (r *Router) Handle(result spec.CheckResult) {
@@ -56,10 +61,15 @@ func (r *Router) SendTest() {
 }
 
 func (r *Router) dispatch(msg spec.AlertMessage) {
+	r.mu.Lock()
+	senders := make([]AlertSender, len(r.senders))
+	copy(senders, r.senders)
+	r.mu.Unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	for _, s := range r.senders {
+	for _, s := range senders {
 		if err := s.Send(ctx, msg); err != nil {
 			slog.Error("alert send failed", "sender", s.Name(), "check", msg.CheckName, "error", err)
 		} else {

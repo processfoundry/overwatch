@@ -1,5 +1,7 @@
 package spec
 
+import "fmt"
+
 type Config struct {
 	Server ServerConfig `yaml:"server,omitempty"`
 	Checks []CheckSpec  `yaml:"checks"`
@@ -8,9 +10,35 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	BindAddress string `yaml:"bind_address,omitempty"`
-	BindPort    int    `yaml:"bind_port,omitempty"`
-	Concurrency int    `yaml:"concurrency,omitempty"`
+	BindAddress     string           `yaml:"bind_address,omitempty"`
+	BindPort        int              `yaml:"bind_port,omitempty"`
+	ExternalAddress string           `yaml:"external_address,omitempty"`
+	Concurrency     int              `yaml:"concurrency,omitempty"`
+	JoinToken       string           `yaml:"join_token,omitempty"`
+	AuthorizedUsers []PublicKeyEntry `yaml:"authorized_users,omitempty"`
+}
+
+func (s ServerConfig) TokenAddress() string {
+	host := s.BindAddress
+	if s.ExternalAddress != "" {
+		host = s.ExternalAddress
+	}
+	port := s.BindPort
+	if port == 0 {
+		port = 3030
+	}
+	return fmt.Sprintf("%s:%d", host, port)
+}
+
+type PublicKeyEntry struct {
+	KeyID     string `yaml:"key_id"`
+	PublicKey string `yaml:"public_key"`
+	Label     string `yaml:"label,omitempty"`
+}
+
+type ClientConfig struct {
+	ServerAddress string `yaml:"server_address"`
+	KeyID         string `yaml:"key_id"`
 }
 
 type AlertsConfig struct {

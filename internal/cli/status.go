@@ -27,13 +27,23 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show all configured checks and alerts with live status",
 	Long:  "Query the running server for live check results and configuration. Falls back to config file if the server is unreachable.",
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if !hasServerConfig() && !hasClientConfig() {
+			return fmt.Errorf("no configuration found — run 'overwatch init' to get started")
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadCfg()
-		if err != nil {
+		addr, err := serverAddr()
+		if err != nil && !hasClientConfig() {
 			return err
 		}
 
-		addr := fmt.Sprintf("http://%s:%d", cfg.Server.BindAddress, cfg.Server.BindPort)
+		cfg, _ := loadCfg()
+
+		if addr == "" && cfg != nil {
+			addr = fmt.Sprintf("http://%s:%d", cfg.Server.BindAddress, cfg.Server.BindPort)
+		}
 		resp, apiErr := fetchStatus(addr)
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -69,6 +79,9 @@ var statusCmd = &cobra.Command{
 			}
 			w.Flush()
 		} else {
+			if cfg == nil {
+				return fmt.Errorf("server not reachable (%s) and no local config available", apiErr)
+			}
 			fmt.Fprintf(os.Stderr, "server not reachable (%s), showing config only\n\n", apiErr)
 
 			fmt.Fprintln(w, "CHECKS")
@@ -96,16 +109,14 @@ var statusCmd = &cobra.Command{
 			w.Flush()
 		}
 
-		fmt.Printf("\nServer: %s:%d  Concurrency: %d\n",
-			cfg.Server.BindAddress, cfg.Server.BindPort, cfg.Server.Concurrency)
+		fmt.Printf("\nServer: %s\n", addr)
 
 		return nil
 	},
 }
 
 func fetchStatus(addr string) (*apiStatusResponse, error) {
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(addr + "/api/status")
+	resp, err := apiDo("GET", addr+"/api/status", nil)
 	if err != nil {
 		return nil, err
 	}

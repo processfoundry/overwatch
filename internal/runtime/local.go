@@ -47,6 +47,27 @@ func (s *LocalJobSource) Poll(_ context.Context, _ spec.WorkerInfo) ([]spec.Leas
 	return leases, nil
 }
 
+func (s *LocalJobSource) UpdateChecks(checks []spec.CheckSpec) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing := make(map[string]time.Time, len(s.nextRun))
+	for k, v := range s.nextRun {
+		existing[k] = v
+	}
+
+	s.checks = checks
+	s.nextRun = make(map[string]time.Time, len(checks))
+	now := time.Now()
+	for _, c := range checks {
+		if t, ok := existing[c.Name]; ok {
+			s.nextRun[c.Name] = t
+		} else {
+			s.nextRun[c.Name] = now
+		}
+	}
+}
+
 func (s *LocalJobSource) Ack(_ context.Context, _ spec.Lease, _ spec.CheckResult) error {
 	return nil
 }

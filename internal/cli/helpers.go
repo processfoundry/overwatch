@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/christianmscott/overwatch/internal/auth"
 	"github.com/christianmscott/overwatch/internal/config"
 	"github.com/christianmscott/overwatch/pkg/spec"
+	"gopkg.in/yaml.v3"
 )
 
 func cfgPath() string {
@@ -23,7 +27,33 @@ func loadCfg() (*spec.Config, error) {
 	return config.Load(cfgPath())
 }
 
+func loadClientConfig() (*spec.ClientConfig, error) {
+	dir := clientDir()
+	data, err := os.ReadFile(filepath.Join(dir, "client.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	var cc spec.ClientConfig
+	if err := yaml.Unmarshal(data, &cc); err != nil {
+		return nil, err
+	}
+	return &cc, nil
+}
+
+func hasClientConfig() bool {
+	_, err := os.Stat(filepath.Join(clientDir(), "client.yaml"))
+	return err == nil
+}
+
+func hasServerConfig() bool {
+	_, err := os.Stat(cfgPath())
+	return err == nil
+}
+
 func serverAddr() (string, error) {
+	if cc, err := loadClientConfig(); err == nil && cc.ServerAddress != "" {
+		return cc.ServerAddress, nil
+	}
 	cfg, err := loadCfg()
 	if err != nil {
 		return "", err
@@ -49,7 +79,25 @@ func apiDo(method, url string, body any) (*http.Response, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
+	if err := signIfConfigured(req); err != nil {
+		return nil, fmt.Errorf("signing request: %w", err)
+	}
+
 	return apiClient.Do(req)
+}
+
+func signIfConfigured(req *http.Request) error {
+	dir := clientDir()
+	cc, err := loadClientConfig()
+	if err != nil {
+		return nil
+	}
+	priv, err := auth.LoadPrivateKey(dir)
+	if err != nil {
+		return nil
+	}
+	return auth.SignRequest(req, priv, cc.KeyID)
 }
 
 type apiError struct {

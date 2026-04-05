@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/christianmscott/overwatch/internal/tui"
@@ -14,6 +15,10 @@ var rootCmd = &cobra.Command{
 	Short: "Monitoring tool for sites, services, jobs, and more",
 	Long:  "Overwatch is an open source monitoring tool that runs health checks and alerts on failures.",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !hasServerConfig() && !hasClientConfig() {
+			fmt.Println("No configuration found. Run 'overwatch init' to get started.")
+			return nil
+		}
 		return tui.Run()
 	},
 }
@@ -27,6 +32,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: overwatch.yaml)")
 
+	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(checkCmd)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/christianmscott/overwatch/internal/auth"
 	"github.com/christianmscott/overwatch/internal/checks"
 	"github.com/christianmscott/overwatch/internal/config"
 	"github.com/christianmscott/overwatch/internal/results"
@@ -23,6 +25,7 @@ type Server struct {
 	cfgPath    string
 	results    *results.Store
 	httpServer *http.Server
+	onReload   func()
 }
 
 func New(cfg *spec.Config, cfgPath string, store *results.Store) *Server {
@@ -34,6 +37,7 @@ func New(cfg *spec.Config, cfgPath string, store *results.Store) *Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("POST /api/join", s.handleJoin)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/checks", s.handleListChecks)
 	mux.HandleFunc("POST /api/checks", s.handleAddCheck)
@@ -44,11 +48,12 @@ func New(cfg *spec.Config, cfgPath string, store *results.Store) *Server {
 	mux.HandleFunc("PUT /api/alerts/{name}", s.handleUpdateAlert)
 	mux.HandleFunc("DELETE /api/alerts/{name}", s.handleRemoveAlert)
 	mux.HandleFunc("POST /api/checkin/{name}", s.handleCheckIn)
+	mux.HandleFunc("POST /api/reload", s.handleReload)
 
 	addr := net.JoinHostPort(cfg.Server.BindAddress, fmt.Sprintf("%d", cfg.Server.BindPort))
 	s.httpServer = &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      s.authMiddleware(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -76,6 +81,101 @@ func (s *Server) UpdateConfig(cfg *spec.Config) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cfg = cfg
+}
+
+func (s *Server) OnReload(fn func()) {
+	s.onReload = fn
+}
+
+func (s *Server) handleReload(w http.ResponseWriter, _ *http.Request) {
+	if s.onReload != nil {
+		s.onReload()
+		writeJSON(w, http.StatusOK, map[string]string{"status": "reloaded"})
+	} else {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "reload not configured"})
+	}
+}
+
+var publicPaths = map[string]bool{
+	"/api/health": true,
+	"/api/join":   true,
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if publicPaths[r.URL.Path] || strings.HasPrefix(r.URL.Path, "/api/checkin/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.mu.RLock()
+		keys := s.cfg.Server.AuthorizedUsers
+		joinToken := s.cfg.Server.JoinToken
+		s.mu.RUnlock()
+
+		if len(keys) == 0 && joinToken == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if len(keys) == 0 {
+			slog.Warn("auth denied: no authorized users configured", "path", r.URL.Path)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized: no authorized users configured"})
+			return
+		}
+		if err := auth.VerifyRequest(r, keys); err != nil {
+			slog.Warn("auth failed", "error", err, "path", r.URL.Path)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized: " + err.Error()})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		JoinToken string `json:"join_token"`
+		PublicKey string `json:"public_key"`
+		Label     string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if req.JoinToken != s.cfg.Server.JoinToken {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "invalid join token"})
+		return
+	}
+
+	pubBytes, err := base64.StdEncoding.DecodeString(req.PublicKey)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid public key encoding"})
+		return
+	}
+
+	keyID := auth.KeyID(pubBytes)
+
+	for _, k := range s.cfg.Server.AuthorizedUsers {
+		if k.KeyID == keyID {
+			writeJSON(w, http.StatusOK, map[string]string{"key_id": keyID, "message": "already joined"})
+			return
+		}
+	}
+
+	s.cfg.Server.AuthorizedUsers = append(s.cfg.Server.AuthorizedUsers, spec.PublicKeyEntry{
+		KeyID:     keyID,
+		PublicKey: req.PublicKey,
+		Label:     req.Label,
+	})
+	if err := config.Save(s.cfgPath, s.cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	slog.Info("client joined", "key_id", keyID, "label", req.Label)
+	writeJSON(w, http.StatusOK, map[string]string{"key_id": keyID, "message": "joined"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

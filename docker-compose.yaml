@@ -1,0 +1,11 @@
+services:
+  overwatch:
+    build:
+      context: .
+      dockerfile: packaging/docker/Dockerfile
+    hostname: overwatch
+    ports:
+      - "3030:3030"
+    volumes:
+      - ./overwatch.yaml:/overwatch.yaml
+    command: ["--bind-address", "0.0.0.0"]

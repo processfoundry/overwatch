@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/christianmscott/overwatch/internal/auth"
 	"github.com/christianmscott/overwatch/internal/config"
 	"github.com/christianmscott/overwatch/internal/runtime"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ var serveCmd = &cobra.Command{
 
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			slog.Info("no config file found, creating starter config", "path", path)
-			if err := os.WriteFile(path, []byte(config.StarterConfig), 0644); err != nil {
+			if err := config.WriteStarterWithJoinToken(path); err != nil {
 				return fmt.Errorf("writing starter config: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "Created starter config at %s\n", path)
@@ -45,6 +46,20 @@ var serveCmd = &cobra.Command{
 		if cmd.Flags().Changed("bind-port") {
 			cfg.Server.BindPort = bindPort
 		}
+
+		if cfg.Server.JoinToken == "" {
+			token, err := auth.GenerateJoinToken(cfg.Server.TokenAddress())
+			if err != nil {
+				return err
+			}
+			cfg.Server.JoinToken = token
+			if err := config.Save(path, cfg); err != nil {
+				return fmt.Errorf("saving join token: %w", err)
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "==> Join token: %s\n", cfg.Server.JoinToken)
+		fmt.Fprintf(os.Stderr, "==> Use this token with 'overwatch init' to connect clients.\n\n")
 
 		return runtime.NewEngine(cfg, path).Run(cmd.Context())
 	},

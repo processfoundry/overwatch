@@ -17,6 +17,12 @@ import (
 var alertCmd = &cobra.Command{
 	Use:   "alert",
 	Short: "Manage alert destinations (add, list, remove, update, test)",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if !hasServerConfig() && !hasClientConfig() {
+			return fmt.Errorf("no configuration found — run 'overwatch init' to get started")
+		}
+		return nil
+	},
 }
 
 // --- list ---
@@ -29,7 +35,7 @@ var alertListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		resp, err := apiClient.Get(addr + "/api/alerts")
+		resp, err := apiDo("GET", addr+"/api/alerts", nil)
 		if err != nil {
 			return fmt.Errorf("cannot reach server at %s: %w\nIs 'overwatch serve' running?", addr, err)
 		}

@@ -1,11 +1,40 @@
 package config
 
+import (
+	"fmt"
+	"os"
+
+	"github.com/christianmscott/overwatch/internal/auth"
+	"github.com/christianmscott/overwatch/pkg/spec"
+	"gopkg.in/yaml.v3"
+)
+
+func WriteStarterWithJoinToken(path string) error {
+	var cfg spec.Config
+	if err := yaml.Unmarshal([]byte(StarterConfig), &cfg); err != nil {
+		return fmt.Errorf("parsing starter config: %w", err)
+	}
+
+	token, err := auth.GenerateJoinToken(cfg.Server.TokenAddress())
+	if err != nil {
+		return err
+	}
+	cfg.Server.JoinToken = token
+
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("marshalling config: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
 const StarterConfig = `# Overwatch configuration
 # See: https://github.com/christianmscott/overwatch
 
 server:
   bind_address: 127.0.0.1
   bind_port: 3030
+  # external_address: overwatch.example.com  # hostname or IP clients use to reach this server
   concurrency: 4
 
 checks:
