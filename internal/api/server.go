@@ -97,6 +97,12 @@ func (s *Server) handleReload(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+func (s *Server) notifyReload() {
+	if s.onReload != nil {
+		s.onReload()
+	}
+}
+
 var publicPaths = map[string]bool{
 	"/api/health": true,
 	"/api/join":   true,
@@ -174,6 +180,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.notifyReload()
 
 	slog.Info("client joined", "key_id", keyID, "label", req.Label)
 	writeJSON(w, http.StatusOK, map[string]string{"key_id": keyID, "message": "joined"})
@@ -247,6 +254,7 @@ func (s *Server) handleAddCheck(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.notifyReload()
 	if c.Type == spec.CheckCheckIn {
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"check":       c,
@@ -297,6 +305,7 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
+			s.notifyReload()
 			writeJSON(w, http.StatusOK, s.cfg.Checks[i])
 			return
 		}
@@ -315,6 +324,7 @@ func (s *Server) handleRemoveCheck(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
+			s.notifyReload()
 			writeJSON(w, http.StatusOK, map[string]string{"removed": name})
 			return
 		}
@@ -349,6 +359,7 @@ func (s *Server) handleAddAlert(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.notifyReload()
 	writeJSON(w, http.StatusCreated, wh)
 }
 
@@ -380,6 +391,7 @@ func (s *Server) handleUpdateAlert(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
+			s.notifyReload()
 			writeJSON(w, http.StatusOK, s.cfg.Alerts.Webhooks[i])
 			return
 		}
@@ -398,6 +410,7 @@ func (s *Server) handleRemoveAlert(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
+			s.notifyReload()
 			writeJSON(w, http.StatusOK, map[string]string{"removed": name})
 			return
 		}

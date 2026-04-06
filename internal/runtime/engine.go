@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -125,6 +126,10 @@ func (e *Engine) startReloadWatcher(ctx context.Context, srv *api.Server, source
 		slog.Info("config reloaded", "checks", len(newCfg.Checks), "webhooks", len(newCfg.Alerts.Webhooks))
 	}
 
+	// Tracks the last time an API-triggered reload occurred so we can
+	// suppress the redundant file-watcher event that follows the YAML write.
+	var lastAPIReload atomic.Int64
+
 	sighup := make(chan os.Signal, 1)
 	signal.Notify(sighup, syscall.SIGHUP)
 
@@ -141,6 +146,7 @@ func (e *Engine) startReloadWatcher(ctx context.Context, srv *api.Server, source
 				case <-sighup:
 					doReload("SIGHUP")
 				case <-apiReload:
+					lastAPIReload.Store(time.Now().UnixNano())
 					doReload("API")
 				}
 			}
@@ -160,6 +166,7 @@ func (e *Engine) startReloadWatcher(ctx context.Context, srv *api.Server, source
 			case <-sighup:
 				doReload("SIGHUP")
 			case <-apiReload:
+				lastAPIReload.Store(time.Now().UnixNano())
 				doReload("API")
 			case event, ok := <-watcher.Events:
 				if !ok {
@@ -169,6 +176,10 @@ func (e *Engine) startReloadWatcher(ctx context.Context, srv *api.Server, source
 					debounce = time.After(500 * time.Millisecond)
 				}
 			case <-debounce:
+				if time.Since(time.Unix(0, lastAPIReload.Load())) < 2*time.Second {
+					slog.Debug("skipping file-triggered reload (recent API write)")
+					continue
+				}
 				doReload("file change")
 			case err, ok := <-watcher.Errors:
 				if !ok {
