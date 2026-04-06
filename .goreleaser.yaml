@@ -25,6 +25,18 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+brews:
+  - repository:
+      owner: processfoundry
+      name: tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/processfoundry/overwatch"
+    description: "Self-hosted monitoring server and TUI for operators"
+    license: "MIT"
+    test: |
+      system "#{bin}/overwatch", "version"
+
 changelog:
   sort: asc
   filters:
