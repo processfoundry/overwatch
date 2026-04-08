@@ -48,7 +48,7 @@ func (s *CloudJobSource) Poll(ctx context.Context, _ spec.WorkerInfo) ([]spec.Le
 			LIMIT $4
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, "orgId", name, type, config
+		RETURNING id, "orgId", name, type, config, "lastCheckIn", "lastCheckInStatus"
 	`, s.workerID, expiry, now, s.batchSize)
 	if err != nil {
 		return nil, fmt.Errorf("poll: %w", err)
@@ -60,17 +60,25 @@ func (s *CloudJobSource) Poll(ctx context.Context, _ spec.WorkerInfo) ([]spec.Le
 		var (
 			id, orgID, name, monType string
 			rawConfig                []byte
+			lastCheckIn              *time.Time
+			lastCheckInStatus        *string
 		)
-		if err := rows.Scan(&id, &orgID, &name, &monType, &rawConfig); err != nil {
+		if err := rows.Scan(&id, &orgID, &name, &monType, &rawConfig, &lastCheckIn, &lastCheckInStatus); err != nil {
 			return nil, fmt.Errorf("poll scan: %w", err)
 		}
 
 		check, err := monitorToCheckSpec(name, monType, rawConfig)
 		if err != nil {
 			slog.Warn("skipping monitor with unparseable config", "id", id, "type", monType, "error", err)
-			// Release the lease so it can be retried.
 			_, _ = s.db.Exec(ctx, `UPDATE "Monitor" SET "leaseOwner" = NULL, "leaseExpiresAt" = NULL WHERE id = $1`, id)
 			continue
+		}
+
+		if monType == "SCHEDULED" {
+			check.LastCheckInAt = lastCheckIn
+			if lastCheckInStatus != nil {
+				check.LastCheckInStatus = *lastCheckInStatus
+			}
 		}
 
 		leases = append(leases, spec.Lease{
@@ -214,20 +222,24 @@ func monitorToCheckSpec(name, monType string, rawConfig []byte) (spec.CheckSpec,
 		check.Target = cfgStr(cfg, "url", "")
 		check.Headers = cfgHeaders(cfg)
 		check.ExpectedStatus = cfgInt(cfg, "expectedStatus", 200)
+		check.LatencyThresholdMs = cfgInt(cfg, "latencyThresholdMs", 0)
 
 	case "TCP":
 		check.Type = spec.CheckTCP
 		host := cfgStr(cfg, "host", "")
 		port := cfgInt(cfg, "port", 80)
 		check.Target = fmt.Sprintf("%s:%d", host, port)
+		check.LatencyThresholdMs = cfgInt(cfg, "latencyThresholdMs", 0)
 
 	case "TLS":
 		check.Type = spec.CheckTLS
 		check.Target = cfgStr(cfg, "hostname", "")
+		check.WarnDays = cfgInt(cfg, "warnDays", 7)
 
 	case "DNS":
 		check.Type = spec.CheckDNS
 		check.Target = cfgStr(cfg, "domain", "")
+		check.RecordType = cfgStr(cfg, "recordType", "A")
 
 	case "SCHEDULED":
 		check.Type = spec.CheckCheckIn

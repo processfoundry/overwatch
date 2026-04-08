@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -29,5 +30,12 @@ func (t *TCPChecker) Check(ctx context.Context, check spec.CheckSpec) spec.Check
 
 	result.Status = spec.StatusUp
 	result.Detail = map[string]any{"target": check.Target}
+
+	if check.LatencyThresholdMs > 0 && result.Duration.Milliseconds() > int64(check.LatencyThresholdMs) {
+		result.Status = spec.StatusDegraded
+		result.Error = fmt.Sprintf("response time %dms exceeds threshold %dms",
+			result.Duration.Milliseconds(), check.LatencyThresholdMs)
+	}
+
 	return result
 }

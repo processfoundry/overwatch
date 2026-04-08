@@ -7,11 +7,16 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/christianmscott/overwatch/internal/alerts/discord"
+	"github.com/christianmscott/overwatch/internal/alerts/pagerduty"
+	"github.com/christianmscott/overwatch/internal/alerts/sms"
 	"github.com/christianmscott/overwatch/internal/alerts/smtp"
+	"github.com/christianmscott/overwatch/internal/alerts/teams"
 	"github.com/christianmscott/overwatch/internal/alerts/webhook"
 	"github.com/christianmscott/overwatch/pkg/spec"
 )
@@ -23,13 +28,87 @@ type txQuerier interface {
 
 // dispatchAlerts reads bound alert channels for the monitor and fires them.
 // Returns whether any alert was triggered and a summary of outcomes.
+func formatDetailValue(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case []map[string]any:
+		var items []string
+		for _, m := range val {
+			if host, ok := m["host"]; ok {
+				if prio, ok := m["priority"]; ok {
+					items = append(items, fmt.Sprintf("%v (pri %v)", host, prio))
+				} else {
+					items = append(items, fmt.Sprintf("%v", host))
+				}
+			}
+		}
+		return strings.Join(items, ", ")
+	case []any:
+		var items []string
+		for _, item := range val {
+			if m, ok := item.(map[string]any); ok {
+				if host, ok := m["host"]; ok {
+					if prio, ok := m["priority"]; ok {
+						items = append(items, fmt.Sprintf("%v (pri %v)", host, prio))
+					} else {
+						items = append(items, fmt.Sprintf("%v", host))
+					}
+				} else {
+					items = append(items, fmt.Sprintf("%v", item))
+				}
+			} else {
+				items = append(items, fmt.Sprintf("%v", item))
+			}
+		}
+		return strings.Join(items, ", ")
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func buildAlertDetail(result spec.CheckResult) string {
+	if result.Detail == nil {
+		return result.Error
+	}
+	var parts []string
+	if result.Error != "" {
+		parts = append(parts, result.Error)
+	}
+	if v, ok := result.Detail["subject"]; ok {
+		parts = append(parts, fmt.Sprintf("Subject: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["issuer"]; ok {
+		parts = append(parts, fmt.Sprintf("Issuer: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["expiresAt"]; ok {
+		parts = append(parts, fmt.Sprintf("Expires: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["daysRemaining"]; ok {
+		parts = append(parts, fmt.Sprintf("Days remaining: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["recordType"]; ok {
+		parts = append(parts, fmt.Sprintf("Record type: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["records"]; ok {
+		parts = append(parts, fmt.Sprintf("Records: %s", formatDetailValue(v)))
+	}
+	if v, ok := result.Detail["lastCheckIn"]; ok {
+		parts = append(parts, fmt.Sprintf("Last check-in: %s", formatDetailValue(v)))
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
 func dispatchAlerts(ctx context.Context, tx txQuerier, lease spec.Lease, result spec.CheckResult, prevStatus string) (bool, any) {
 	msg := spec.AlertMessage{
 		CheckName:      result.CheckName,
 		Status:         result.Status,
 		PreviousStatus: spec.CheckStatus(prevStatus),
 		Timestamp:      result.Timestamp,
-		Detail:         result.Error,
+		Detail:         buildAlertDetail(result),
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -104,6 +183,41 @@ func buildSender(channelType string, rawConfig []byte) (alertSender, error) {
 			return nil, fmt.Errorf("webhook: missing webhookUrl")
 		}
 		return webhook.New(spec.WebhookConfig{Name: "webhook", URL: url}), nil
+
+	case "SLACK":
+		url := cfgStr(cfg, "webhookUrl", "")
+		if url == "" {
+			return nil, fmt.Errorf("slack: missing webhookUrl")
+		}
+		return webhook.New(spec.WebhookConfig{Name: "slack", URL: url}), nil
+
+	case "DISCORD":
+		url := cfgStr(cfg, "webhookUrl", "")
+		if url == "" {
+			return nil, fmt.Errorf("discord: missing webhookUrl")
+		}
+		return discord.New(url), nil
+
+	case "TEAMS":
+		url := cfgStr(cfg, "webhookUrl", "")
+		if url == "" {
+			return nil, fmt.Errorf("teams: missing webhookUrl")
+		}
+		return teams.New(url), nil
+
+	case "PAGERDUTY":
+		key := cfgStr(cfg, "integrationKey", "")
+		if key == "" {
+			return nil, fmt.Errorf("pagerduty: missing integrationKey")
+		}
+		return pagerduty.New(key), nil
+
+	case "SMS":
+		phone := cfgStr(cfg, "phone", "")
+		if phone == "" {
+			return nil, fmt.Errorf("sms: missing phone")
+		}
+		return sms.New(phone), nil
 
 	case "EMAIL":
 		recipient := cfgStr(cfg, "email", "")

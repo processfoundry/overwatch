@@ -53,8 +53,12 @@ type ClientConfig struct {
 }
 
 type AlertsConfig struct {
-	Webhooks []WebhookConfig `yaml:"webhooks,omitempty"`
-	SMTP     *SMTPConfig     `yaml:"smtp,omitempty"`
+	Webhooks  []WebhookConfig   `yaml:"webhooks,omitempty"`
+	SMTP      *SMTPConfig       `yaml:"smtp,omitempty"`
+	Discord   []DiscordConfig   `yaml:"discord,omitempty"`
+	Teams     []TeamsConfig     `yaml:"teams,omitempty"`
+	PagerDuty []PagerDutyConfig `yaml:"pagerduty,omitempty"`
+	SMS       []SMSConfig       `yaml:"sms,omitempty"`
 }
 
 type WebhookConfig struct {
@@ -73,6 +77,26 @@ type SMTPConfig struct {
 	From       string   `yaml:"from"`
 	Recipients []string `yaml:"recipients"`
 	TLS        bool     `yaml:"tls"`
+}
+
+type DiscordConfig struct {
+	Name       string `yaml:"name"`
+	WebhookURL string `yaml:"webhook_url"`
+}
+
+type TeamsConfig struct {
+	Name       string `yaml:"name"`
+	WebhookURL string `yaml:"webhook_url"`
+}
+
+type PagerDutyConfig struct {
+	Name           string `yaml:"name"`
+	IntegrationKey string `yaml:"integration_key"`
+}
+
+type SMSConfig struct {
+	Name  string `yaml:"name"`
+	Phone string `yaml:"phone"`
 }
 
 type WorkerConfig struct {
