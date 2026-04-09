@@ -14,6 +14,7 @@ import (
 
 	"github.com/christianmscott/overwatch/internal/alerts/discord"
 	"github.com/christianmscott/overwatch/internal/alerts/pagerduty"
+	"github.com/christianmscott/overwatch/internal/alerts/resend"
 	"github.com/christianmscott/overwatch/internal/alerts/sms"
 	"github.com/christianmscott/overwatch/internal/alerts/smtp"
 	"github.com/christianmscott/overwatch/internal/alerts/teams"
@@ -224,9 +225,17 @@ func buildSender(channelType string, rawConfig []byte) (alertSender, error) {
 		if recipient == "" {
 			return nil, fmt.Errorf("email: missing email address")
 		}
+		apiKey := os.Getenv("RESEND_API_KEY")
+		if apiKey != "" {
+			from := os.Getenv("RESEND_FROM_EMAIL")
+			if from == "" {
+				from = "Overwatch <alerts@overwatch.dev>"
+			}
+			return resend.New(apiKey, from, recipient), nil
+		}
 		smtpCfg, err := smtpConfigFromEnv(recipient)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("email: set RESEND_API_KEY (recommended) or SMTP_HOST + SMTP_FROM: %w", err)
 		}
 		return smtp.New(smtpCfg), nil
 
