@@ -37,6 +37,33 @@ brews:
     test: |
       system "#{bin}/overwatch", "version"
 
+dockers:
+  - image_templates:
+      - "ghcr.io/processfoundry/overwatch:{{ .Version }}-amd64"
+      - "ghcr.io/processfoundry/overwatch:latest-amd64"
+    dockerfile: packaging/docker/Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+  - image_templates:
+      - "ghcr.io/processfoundry/overwatch:{{ .Version }}-arm64"
+      - "ghcr.io/processfoundry/overwatch:latest-arm64"
+    dockerfile: packaging/docker/Dockerfile.release
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/processfoundry/overwatch:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/processfoundry/overwatch:{{ .Version }}-amd64"
+      - "ghcr.io/processfoundry/overwatch:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/processfoundry/overwatch:latest"
+    image_templates:
+      - "ghcr.io/processfoundry/overwatch:latest-amd64"
+      - "ghcr.io/processfoundry/overwatch:latest-arm64"
+
 changelog:
   sort: asc
   filters:

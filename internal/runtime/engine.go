@@ -89,7 +89,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		router.Handle(r)
 	}
 
-	pool := worker.NewPool(e.cfg.Server.Concurrency, source, handleResult)
+	pool := worker.NewPool(e.cfg.Server.Concurrency, source, handleResult, 60*time.Second)
 
 	slog.Info("starting overwatch",
 		"checks", len(e.cfg.Checks),

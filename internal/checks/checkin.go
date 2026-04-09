@@ -40,6 +40,38 @@ func (c *CheckInChecker) Check(_ context.Context, check spec.CheckSpec) spec.Che
 		Duration:  0,
 	}
 
+	// Cloud mode: lastCheckIn is populated from DB by the job source.
+	if check.LastCheckInAt != nil {
+		if check.LastCheckInStatus == "fail" {
+			result.Status = spec.StatusDown
+			result.Error = "last check-in reported failure"
+			result.Detail = map[string]any{
+				"lastCheckIn": check.LastCheckInAt.Format(time.RFC3339),
+				"status":      "fail",
+			}
+			return result
+		}
+		silence := time.Since(*check.LastCheckInAt)
+		if silence > check.MaxSilence.Duration {
+			result.Status = spec.StatusDown
+			result.Error = fmt.Sprintf("last check-in %s ago (max %s)", silence.Round(time.Second), check.MaxSilence.Duration)
+			result.Detail = map[string]any{
+				"lastCheckIn": check.LastCheckInAt.Format(time.RFC3339),
+				"silenceFor":  silence.Round(time.Second).String(),
+				"maxSilence":  check.MaxSilence.Duration.String(),
+			}
+			return result
+		}
+		result.Status = spec.StatusUp
+		result.Detail = map[string]any{
+			"lastCheckIn": check.LastCheckInAt.Format(time.RFC3339),
+			"silenceFor":  silence.Round(time.Second).String(),
+			"maxSilence":  check.MaxSilence.Duration.String(),
+		}
+		return result
+	}
+
+	// Self-hosted mode: use in-memory ping map.
 	c.mu.Lock()
 	last, ok := c.lastPing[check.Name]
 	c.mu.Unlock()
@@ -54,10 +86,20 @@ func (c *CheckInChecker) Check(_ context.Context, check spec.CheckSpec) spec.Che
 	if silence > check.MaxSilence.Duration {
 		result.Status = spec.StatusDown
 		result.Error = fmt.Sprintf("last check-in %s ago (max %s)", silence.Round(time.Second), check.MaxSilence.Duration)
+		result.Detail = map[string]any{
+			"lastCheckIn": last.Format(time.RFC3339),
+			"silenceFor":  silence.Round(time.Second).String(),
+			"maxSilence":  check.MaxSilence.Duration.String(),
+		}
 		return result
 	}
 
 	result.Status = spec.StatusUp
+	result.Detail = map[string]any{
+		"lastCheckIn": last.Format(time.RFC3339),
+		"silenceFor":  silence.Round(time.Second).String(),
+		"maxSilence":  check.MaxSilence.Duration.String(),
+	}
 	return result
 }
 

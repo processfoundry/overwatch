@@ -1,0 +1,6 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY overwatch /overwatch
+WORKDIR /
+EXPOSE 3030
+ENTRYPOINT ["/overwatch"]
+CMD ["serve"]

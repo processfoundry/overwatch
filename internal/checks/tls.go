@@ -12,6 +12,25 @@ import (
 
 const certExpiryWarning = 7 * 24 * time.Hour // 7 days
 
+func humanDuration(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 {
+		if hours > 0 {
+			return fmt.Sprintf("%dd %dh", days, hours)
+		}
+		return fmt.Sprintf("%dd", days)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
+}
+
 type TLSChecker struct{}
 
 func (t *TLSChecker) Check(ctx context.Context, check spec.CheckSpec) spec.CheckResult {
@@ -48,12 +67,24 @@ func (t *TLSChecker) Check(ctx context.Context, check spec.CheckSpec) spec.Check
 	leaf := certs[0]
 	until := time.Until(leaf.NotAfter)
 
+	result.Detail = map[string]any{
+		"subject":       leaf.Subject.CommonName,
+		"issuer":        leaf.Issuer.CommonName,
+		"expiresAt":     leaf.NotAfter.Format("2006-01-02"),
+		"daysRemaining": int(until.Hours() / 24),
+	}
+
+	warnDuration := certExpiryWarning
+	if check.WarnDays > 0 {
+		warnDuration = time.Duration(check.WarnDays) * 24 * time.Hour
+	}
+
 	if until <= 0 {
 		result.Status = spec.StatusDown
-		result.Error = fmt.Sprintf("certificate expired %s ago", (-until).Round(time.Hour))
-	} else if until < certExpiryWarning {
+		result.Error = fmt.Sprintf("certificate expired %s ago", humanDuration(-until))
+	} else if until < warnDuration {
 		result.Status = spec.StatusDegraded
-		result.Error = fmt.Sprintf("certificate expires in %s", until.Round(time.Hour))
+		result.Error = fmt.Sprintf("certificate expires in %s", humanDuration(until))
 	} else {
 		result.Status = spec.StatusUp
 	}

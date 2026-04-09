@@ -7,6 +7,8 @@ import (
 
 type Lease struct {
 	ID        string    `json:"id"`
+	MonitorID string    `json:"monitor_id"`
+	OrgID     string    `json:"org_id"`
 	Check     CheckSpec `json:"check"`
 	IssuedAt  time.Time `json:"issued_at"`
 	ExpiresAt time.Time `json:"expires_at"`

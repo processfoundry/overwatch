@@ -17,3 +17,17 @@ jobs:
 
       - run: go vet ./...
       - run: go test ./... -race -count=1
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/docker/Dockerfile
+          push: false
+          tags: overwatch:ci

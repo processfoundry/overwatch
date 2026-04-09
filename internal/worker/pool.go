@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/christianmscott/overwatch/internal/checks"
 	"github.com/christianmscott/overwatch/pkg/spec"
@@ -12,22 +13,57 @@ import (
 type ResultHandler func(spec.CheckResult)
 
 type Pool struct {
-	concurrency int
-	source      spec.JobSource
-	onResult    ResultHandler
+	concurrency   int
+	source        spec.JobSource
+	onResult      ResultHandler
+	leaseDuration time.Duration
 }
 
-func NewPool(concurrency int, source spec.JobSource, onResult ResultHandler) *Pool {
+func NewPool(concurrency int, source spec.JobSource, onResult ResultHandler, leaseDuration time.Duration) *Pool {
 	return &Pool{
-		concurrency: concurrency,
-		source:      source,
-		onResult:    onResult,
+		concurrency:   concurrency,
+		source:        source,
+		onResult:      onResult,
+		leaseDuration: leaseDuration,
 	}
 }
 
 func (p *Pool) Run(ctx context.Context, leases <-chan spec.Lease) {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, p.concurrency)
+
+	// Track in-flight leases for heartbeating.
+	var mu sync.Mutex
+	inFlight := make(map[string]spec.Lease)
+
+	heartbeatInterval := p.leaseDuration / 3
+	if heartbeatInterval < time.Second {
+		heartbeatInterval = time.Second
+	}
+
+	go func() {
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				mu.Lock()
+				snapshot := make([]spec.Lease, 0, len(inFlight))
+				for _, l := range inFlight {
+					snapshot = append(snapshot, l)
+				}
+				mu.Unlock()
+
+				for _, l := range snapshot {
+					if err := p.source.Heartbeat(ctx, l); err != nil {
+						slog.Warn("heartbeat failed", "lease", l.ID, "error", err)
+					}
+				}
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -40,11 +76,20 @@ func (p *Pool) Run(ctx context.Context, leases <-chan spec.Lease) {
 				return
 			}
 
+			mu.Lock()
+			inFlight[lease.ID] = lease
+			mu.Unlock()
+
 			sem <- struct{}{}
 			wg.Add(1)
 			go func(l spec.Lease) {
 				defer wg.Done()
 				defer func() { <-sem }()
+				defer func() {
+					mu.Lock()
+					delete(inFlight, l.ID)
+					mu.Unlock()
+				}()
 
 				result := checks.Run(ctx, l.Check)
 

@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -43,11 +44,26 @@ func (h *HTTPChecker) Check(ctx context.Context, check spec.CheckSpec) spec.Chec
 		expected = 200
 	}
 
+	result.Detail = map[string]any{
+		"statusCode":    resp.StatusCode,
+		"statusText":    resp.Status,
+		"contentType":   resp.Header.Get("Content-Type"),
+		"contentLength": resp.ContentLength,
+		"server":        resp.Header.Get("Server"),
+	}
+
 	if resp.StatusCode == expected {
 		result.Status = spec.StatusUp
 	} else {
 		result.Status = spec.StatusDown
 		result.Error = "unexpected status " + resp.Status
+	}
+
+	if result.Status == spec.StatusUp && check.LatencyThresholdMs > 0 &&
+		result.Duration.Milliseconds() > int64(check.LatencyThresholdMs) {
+		result.Status = spec.StatusDegraded
+		result.Error = fmt.Sprintf("response time %dms exceeds threshold %dms",
+			result.Duration.Milliseconds(), check.LatencyThresholdMs)
 	}
 
 	return result
