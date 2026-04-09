@@ -102,19 +102,24 @@ Overwatch doesn't manage its own service lifecycle. Use your platform's process 
 
 ### Docker
 
-The published image is available on GitHub Container Registry:
+The published image is available on GitHub Container Registry.
+
+- Pick a **host directory** for config (for example `overwatch-data` beside where you run the command). Bind-mount that **folder** into the container — Docker creates an empty directory on the host on first use if needed. This avoids bind-mounting a single file path that does not exist yet, which Docker would create as a **directory** by mistake.
+- Set `--config` to `overwatch.yaml` **inside** that mount. If that file is missing, `serve` writes a starter config on startup; if it already exists (e.g. you copied one in), it is loaded as usual. The join token is printed to stderr.
 
 ```bash
 docker run -d \
   -p 3030:3030 \
-  -v ./overwatch.yaml:/overwatch.yaml \
+  -v "$(pwd)/overwatch-data:/etc/overwatch" \
   ghcr.io/processfoundry/overwatch:latest \
-  serve --bind-address 0.0.0.0
+  serve --bind-address 0.0.0.0 --config /etc/overwatch/overwatch.yaml
 ```
 
 Replace `latest` with a specific version tag (e.g. `v0.3.0`) to pin releases.
 
 ### Docker Compose
+
+Same pattern: mount a host directory, point `serve` at `overwatch.yaml` inside it.
 
 ```yaml
 services:
@@ -123,8 +128,15 @@ services:
     ports:
       - "3030:3030"
     volumes:
-      - ./overwatch.yaml:/overwatch.yaml
-    command: ["serve", "--bind-address", "0.0.0.0"]
+      - ./overwatch-data:/etc/overwatch
+    command:
+      [
+        "serve",
+        "--bind-address",
+        "0.0.0.0",
+        "--config",
+        "/etc/overwatch/overwatch.yaml",
+      ]
 ```
 
 ### systemd (Linux)

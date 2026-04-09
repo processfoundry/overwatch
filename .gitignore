@@ -26,5 +26,6 @@ AGENTS.md
 
 # overwatch config
 overwatch.yaml
+overwatch-data/
 
 .cursor/plans

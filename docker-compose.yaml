@@ -7,5 +7,12 @@ services:
     ports:
       - "3030:3030"
     volumes:
-      - ./overwatch.yaml:/overwatch.yaml
-    command: ["serve", "--bind-address", "0.0.0.0"]
+      - ./overwatch-data:/etc/overwatch
+    command:
+      [
+        "serve",
+        "--bind-address",
+        "0.0.0.0",
+        "--config",
+        "/etc/overwatch/overwatch.yaml",
+      ]
